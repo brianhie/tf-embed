@@ -12,6 +12,9 @@ def worker(commands):
         process.wait()
 
 if __name__ == '__main__':
+    if not os.path.isdir('data/'):
+        os.mkdir('data/')
+    
     tf_to_commands = {}
     tf_to_date = {}
     for line in open(sys.argv[1], 'r'):
