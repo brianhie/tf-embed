@@ -6,7 +6,7 @@ import subprocess
 ##############
 # Parameters #
 
-N_WORKERS = 7 # Threads.
+N_WORKERS = int(sys.argv[1]) # Threads.
 FILE_SUFFIX = '.bed.gz'
 LEFT_WINDOW = 1000 # Base pairs.
 RIGHT_WINDOW = 1000 # Base pairs.
@@ -16,10 +16,13 @@ RIGHT_WINDOW = 1000 # Base pairs.
 def worker(tf, tfs):
     # Intersect TF with all other TFs.
     intersections = []
-    for other_tf in tfs:
-        if tf == '22Rv1/CTCF':
-            print(other_tf)
+    for pos, other_tf in enumerate(tfs):
         if tf == other_tf:
+            # Debug output.
+            if pos % 50 == 0:
+                print('TF x TF: Processing TF {0}'
+                      .format(pos))
+            # TF intersected with itself is 0.
             intersections.append(0)
             continue
 
@@ -36,7 +39,7 @@ def worker(tf, tfs):
         ps = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         output = subprocess.check_output('sort -u -k1,1 -k2,2n'.split(),
                                          stdin=ps.stdout)
-        n_peaks = len(str(output).rstrip().split('\\n'))
+        n_peaks = len(output.decode('utf-8').rstrip().split('\n'))
         intersections.append(n_peaks)
 
     # Ensure directory is created before writing to it.

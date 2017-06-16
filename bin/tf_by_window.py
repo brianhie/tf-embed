@@ -6,41 +6,37 @@ import subprocess
 ##############
 # Parameters #
 
-N_WORKERS = 7 # Threads.
+N_WORKERS = 8 # Threads.
 FILE_SUFFIX = '.bed.gz'
-WINDOWS_KB = 100
+WINDOWS_KB = int(sys.argv[1])
 
 ##############
 
-def worker(tf, tfs):
-    # Intersect TF with all other TFs.
-    intersections = []
-    for other_tf in tfs:
-        if tf == '22Rv1/CTCF':
-            print(other_tf)
-        if tf == other_tf:
-            intersections.append(0)
-            continue
+def worker(tf, pos):
+    # Debug output.
+    if pos % 50 == 0:
+        print('TF x {0}kb window: Processing TF {1}'
+              .format(WINDOWS_KB, pos))
 
-        command = (
-            '/modules/pkgs/bedtools/2.25.0/bin/bedtools ' +
-            'intersect -a {0} -b {1} -wa'
-        ).format(
-            'data/' + tf + FILE_SUFFIX,
-            'resources/windows_{0}kb.bed'.format(WINDOWS_KB)
-        )
+    command = (
+        '/modules/pkgs/bedtools/2.25.0/bin/bedtools ' +
+        'intersect -a {0} -b {1} -wa -c'
+    ).format(
+        'data/windows_{0}kb.bed'.format(WINDOWS_KB),
+        'data/' + tf + FILE_SUFFIX
+    )
     
-        output = str(subprocess.check_output(command.split()))
-        n_peaks = len(output.rstrip().split('\n'))
-        intersections.append(n_peaks)
-
+    ps = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+    output = subprocess.check_output('cut -f 4'.split(),
+                                     stdin=ps.stdout)
     # Ensure directory is created before writing to it.
     tf_dir = 'target/tf_by_window/{0}'.format(tf)
     os.makedirs(tf_dir, exist_ok=True)
 
     # Save data to file.
-    with open(tf_dir + '/windows_{0}.tsv'.format(WINDOWS_KB), 'w+') as f:
-        f.write('\n'.join([ str(i) for i in intersections ]))
+    with open(tf_dir + '/windows_{0}kb.tsv'
+              .format(WINDOWS_KB), 'w+') as f:
+        f.write(output.decode('utf-8'))
 
 if __name__ == '__main__':
     tfs = sorted(
@@ -51,7 +47,7 @@ if __name__ == '__main__':
 
     pool = Pool(processes=N_WORKERS)
     results = [
-        pool.apply_async(worker, [ tf, tfs ])
-        for tf in tfs
+        pool.apply_async(worker, [ tf, pos ])
+        for pos, tf in enumerate(tfs)
     ]
     ans = [ r.get() for r in results ]
