@@ -13,7 +13,7 @@ python bin/download.py resources/metadata.tsv
 # Also see the script bin/tf_by_tf.sh for
 # a bash script that can be submitted to the
 # PBS cluster.
-python bin/tf_by_tf.py
+python bin/tf_by_tf.py 5
 
 # Generate genomic windows files.
 bedtools makewindows \
@@ -34,6 +34,11 @@ python bin/tf_by_window.py 1000 # 1 MB.
 python bin/reduce.py \
        "target/tf_by_tf/*/*/n_peaks.tsv" \
        target/tf_by_tf/reduced.tsv
+# Symmetrize the TF x TF matrix.
+python bin/make_symmetric.py \
+       target/tf_by_tf/reduced.tsv \
+       target/tf_by_tf/reduced_symmetric.tsv
+
 python bin/reduce.py \
        "target/tf_by_window/*/*/windows_100kb.tsv" \
        target/tf_by_window/window_100kb_reduced.tsv

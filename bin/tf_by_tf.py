@@ -8,43 +8,83 @@ import subprocess
 
 N_WORKERS = int(sys.argv[1]) # Threads.
 FILE_SUFFIX = '.bed.gz'
-LEFT_WINDOW = 1000 # Base pairs.
-RIGHT_WINDOW = 1000 # Base pairs.
+WINDOW = 1000 # Base pairs.
 
 ##############
 
+def write_intersect_files(tf, other_tf, tfs):
+    tf_by_otf = ('target/tf_by_tf/{0}/intersect_{1}.bed'
+                 .format(tf, other_tf.replace('/', '_')))
+    with open(tf_by_otf, 'w+') as tf_by_otf_file:
+        ps1 = subprocess.Popen(
+            ('/modules/pkgs/bedtools/2.25.0/bin/bedtools ' +
+             'intersect -u -a {0} -b {1}'
+             .format(
+                 'data/' + tf + FILE_SUFFIX,
+                 'data/' + other_tf + FILE_SUFFIX
+             )).split(),
+            stdout=tf_by_otf_file
+        )
+        
+    otf_by_tf = ('target/tf_by_tf/{1}/intersect_{0}.bed'
+                 .format(tf.replace('/', '_'), other_tf))
+    with open(otf_by_tf, 'w+') as otf_by_tf_file:
+        ps2 = subprocess.Popen(
+            ('/modules/pkgs/bedtools/2.25.0/bin/bedtools ' +
+             'intersect -u -a {1} -b {0}'
+             .format(
+                 'data/' + tf + FILE_SUFFIX,
+                 'data/' + other_tf + FILE_SUFFIX
+             )).split(),
+            stdout=otf_by_tf_file
+        )
+
+    ps1.wait()
+    ps2.wait()
+        
+    return tf_by_otf, otf_by_tf
+
 def worker(tf, tfs):
+    # Ensure directory is created before writing to it.
+    tf_dir = 'target/tf_by_tf/{0}'.format(tf)
+    os.makedirs(tf_dir, exist_ok=True)
+
     # Intersect TF with all other TFs.
     intersections = []
     for pos, other_tf in enumerate(tfs):
         if tf == other_tf:
             # Debug output.
-            if pos % 50 == 0:
-                print('TF x TF: Processing TF {0}'
-                      .format(pos))
+            print('TF x TF: Processing TF {0}'
+                  .format(pos))
             # TF intersected with itself is 0.
             intersections.append(0)
             continue
+        elif tf > other_tf:
+            # Will result in upper triangular TF x TF matrix.
+            intersections.append(0)
+            continue
 
+        # Write individual BED files with only overlapping peaks.
+        tf_by_otf, otf_by_tf = write_intersect_files(tf, other_tf, tfs)
+
+        # Then, concatenate the two files, sort, ...
+        command = 'sort -k1,1 -k2,2n {0} {1}'.format(tf_by_otf, otf_by_tf)
+        ps = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+
+        # ... and merge.
         command = (
             '/modules/pkgs/bedtools/2.25.0/bin/bedtools ' +
-            'window -l {0} -r {1} -a {2} -b {3}'
-        ).format(
-            LEFT_WINDOW,
-            RIGHT_WINDOW,
-            'data/' + tf + FILE_SUFFIX,
-            'data/' + other_tf + FILE_SUFFIX
-        )
-    
-        ps = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        output = subprocess.check_output('sort -u -k1,1 -k2,2n'.split(),
+            'merge -d {0} -i stdin'
+        ).format(WINDOW)
+        output = subprocess.check_output(command.split(),
                                          stdin=ps.stdout)
+        ps.wait()
         n_peaks = len(output.decode('utf-8').rstrip().split('\n'))
         intersections.append(n_peaks)
 
-    # Ensure directory is created before writing to it.
-    tf_dir = 'target/tf_by_tf/{0}'.format(tf)
-    os.makedirs(tf_dir, exist_ok=True)
+        # Delete files once done.
+        command = 'rm -f {0} {1}'.format(tf_by_otf, otf_by_tf)
+        subprocess.Popen(command.split()).wait()
 
     # Save data to file.
     with open(tf_dir + '/n_peaks.tsv', 'w+') as f:
